@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import { AppShell } from "@/components/AppShell";
+import AIAssistant from "@/components/AIAssistant";
 
 export const metadata: Metadata = {
   title: "OpFlow — Controle de Projetos",
@@ -19,6 +20,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-[var(--bg-primary)]">
         <AuthProvider>
           <AppShell>{children}</AppShell>
+          <AIAssistant />
         </AuthProvider>
       </body>
     </html>

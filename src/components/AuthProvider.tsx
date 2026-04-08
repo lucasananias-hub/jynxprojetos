@@ -7,23 +7,28 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import { usePathname } from "next/navigation";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Check at module level — NEXT_PUBLIC vars are inlined at build time
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const IS_DEMO =
+  !SUPABASE_URL ||
+  !SUPABASE_KEY ||
+  SUPABASE_URL.includes("your-project") ||
+  SUPABASE_KEY.includes("your-anon");
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  isDemo: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
-  loading: true,
+  loading: false,
+  isDemo: true,
 });
 
 export function useAuth() {
@@ -32,27 +37,40 @@ export function useAuth() {
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!IS_DEMO);
   const pathname = usePathname();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    if (IS_DEMO) return;
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let cleanup: (() => void) | undefined;
 
-    return () => subscription.unsubscribe();
+    import("@supabase/supabase-js").then(({ createClient }) => {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      supabase.auth
+        .getSession()
+        .then(({ data: { session } }) => {
+          setUser(session?.user ?? null);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      });
+
+      cleanup = () => subscription.unsubscribe();
+    }).catch(() => setLoading(false));
+
+    return () => cleanup?.();
   }, []);
 
   useEffect(() => {
-    if (!loading && !user && pathname !== "/login") {
+    if (!IS_DEMO && !loading && !user && pathname !== "/login") {
       window.location.href = "/login";
     }
   }, [loading, user, pathname]);
@@ -70,12 +88,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!user && pathname !== "/login") {
+  if (!IS_DEMO && !user && pathname !== "/login") {
     return null;
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, isDemo: IS_DEMO }}>
       {children}
     </AuthContext.Provider>
   );
